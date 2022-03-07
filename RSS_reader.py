@@ -1,13 +1,13 @@
 """import and install modules"""
 
+import argparse
+import json
+import logging
+import os
 import subprocess
 import sys
-import os
-from datetime import datetime
 import urllib.request
-import json
-import argparse
-import logging
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -48,6 +48,8 @@ except ModuleNotFoundError as error:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pymongo'])
     import pymongo
 
+from pymongo import MongoClient
+
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -55,7 +57,6 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
-from requests.exceptions import ConnectionError
 
 
 def exception_wrapper(exit_mode=True):
@@ -81,7 +82,7 @@ def get_args():
     """ Unpacks arguments from command line and returns them as "args" object."""
     parser = argparse.ArgumentParser(description='Parses an RSS feed')
     parser.add_argument('--source', type=str, help='a source for parsing')
-    parser.add_argument('--version', action='version', version='%(prog)s 4.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 5.0')
     parser.add_argument('--json', action='store_true', help='write collected feed into json file')
     parser.add_argument('--verbose', action='store_true', help='verbose status message')
     parser.add_argument('--limit', type=int, help='Limit of news in feed. In case of None Limit all feed is provided')
@@ -145,40 +146,32 @@ def cache_feed(allnews, source):
 
 
 @exception_wrapper()
-def cache_update(allnews, source, cache_file='cache.json'):
-    """Creates new cache file from current RSS if no cache file exists
-    or compares existing cache with current feed and adds new items"""
-    cache = tuple(cache_feed(allnews, source))
-    if not os.path.isfile(cache_file):
-        with open(cache_file, 'w', encoding='utf-8') as file:
-            json.dump(cache, file, indent=4, ensure_ascii=False)
+def cache_update(allnews, source):
+    """Updates news in MongoDB"""
+    news = db.news
+    if bool(news.find_one()):
+        for item in cache_feed(allnews, source):
+            news.update_one({'_id': '_id'}, {"$set": item})
     else:
-        with open(cache_file, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-
-        for record in cache:
-            if record not in data:
-                data.append(record)
-        with open(cache_file, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=4, ensure_ascii=False)
+        for item in cache_feed(allnews, source):
+            news.insert_one(item)
 
 
 @exception_wrapper()
-def read_cache(source=None, date=None, limit=None, cache_file='cache.json'):
-    """Downloads cached feed from cache.json file"""
-    news = []
-    if not os.path.isfile(cache_file):
+def read_cache(source=None, date=None, limit=None):
+    """Downloads cached feed from MongoDB"""
+    news_list = []
+    news = db.news
+    if not bool(news.find_one()):
         print("Unfortunately, there's no cached news yet")
     else:
-        with open(cache_file, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        for record in data:
+        for record in news.find():
             if source:
                 if record['Published'].replace('-', '') == date and record['RSS link'] == source:
-                    news.append(record)
+                    news_list.append(record)
             elif record['Published'].replace('-', '') == date:
-                news.append(record)
-    return news[:limit]
+                news_list.append(record)
+    return news_list[:limit]
 
 
 @exception_wrapper()
@@ -297,6 +290,10 @@ def main_block():
     """Declares global variables, sets modes of the App, calls inner functions of the program"""
     global args
     global logger
+    global client
+    global db
+    client = MongoClient('52.16.25.193', 27017)
+    db = client["news_database"]
     if not os.path.exists('images'):
         os.makedirs('images')
     args = get_args()
