@@ -292,7 +292,7 @@ def main_block():
     global logger
     global client
     global db
-    client = MongoClient('46.137.50.103', 27017)
+    client = MongoClient('localhost', 27017)
     db = client["news_database"]
     if not os.path.exists('images'):
         os.makedirs('images')
