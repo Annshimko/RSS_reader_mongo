@@ -12,6 +12,8 @@ COPY ./src .
 # update PATH
 ENV PATH=/root/.local:$PATH
 
+#
+ENTRYPOINT ["python", "./RSS_reader.py"]
 # make sure you include the -u flag to have our stdout logged
-CMD [ "python"]
+#CMD [ "python"]
 #, "-u", "./main.py" ]
